@@ -1,0 +1,17 @@
+{
+  "name": "अक्षर ज्ञान — Akshar Gyan",
+  "short_name": "अक्षर ज्ञान",
+  "description": "बिल्कुल शुरुआत से हिंदी और अंग्रेज़ी पढ़ना सीखें — आवाज़, तस्वीर और रंगों के साथ।",
+  "lang": "hi",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fff8ee",
+  "theme_color": "#f97316",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

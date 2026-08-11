@@ -205,3 +205,14 @@ Deadpool & Wolverine, Parasite, The Dark Knight, Inception
 MIT License. Data is for demonstration purposes only.
 
 Built with ❤️ for movie analytics enthusiasts, producers, and entertainment researchers.
+
+---
+
+## 📖 Also in this repository: अक्षर ज्ञान (Akshar Gyan)
+
+The **`docs/`** folder contains a separate, standalone project: a free literacy-learning
+website that teaches adults to read Hindi and English from absolute zero — voice-guided,
+picture-based, and usable by someone who cannot read any text yet.
+
+➡️ See **[docs/README.md](docs/README.md)** for what it does and how to put it live on
+GitHub Pages in two minutes (Settings → Pages → deploy branch → `/docs` folder).
