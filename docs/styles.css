@@ -193,6 +193,81 @@ button:active { transform: scale(0.96); }
 /* ---------------------------- letter grid ---------------------------- */
 .hint-line { text-align: center; font-size: 1.2rem; font-weight: 700; color: var(--ink-soft); margin: 6px 0 14px; }
 
+/* ------------------- letter groups (batch lessons) ------------------- */
+.grp-list { display: grid; gap: 16px; }
+.grp {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 20px 18px;
+  box-shadow: var(--shadow);
+  border-left: 12px solid transparent;
+  text-align: left;
+}
+.grp-num {
+  width: 54px;
+  height: 54px;
+  min-width: 54px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  font-size: 1.7rem;
+  font-weight: 900;
+  color: #fff;
+}
+.grp-letters {
+  flex: 1;
+  font-size: 2.3rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.grp-state { font-size: 2rem; }
+.grp.c-vowel { border-color: var(--vowel); } .grp.c-vowel .grp-num { background: var(--vowel); } .grp.c-vowel .grp-letters { color: var(--vowel); }
+.grp.c-cons  { border-color: var(--cons); }  .grp.c-cons  .grp-num { background: var(--cons); }  .grp.c-cons  .grp-letters { color: var(--cons); }
+.grp.current { animation: gentlePulse 2s infinite; box-shadow: 0 0 0 5px #fcd34d, var(--shadow); }
+.grp.later { opacity: 0.5; }
+.grp.done { opacity: 0.88; }
+.grp.done .grp-letters { color: var(--matra); }
+
+/* ----------------------- finger tracing (writing) ----------------------- */
+.trace-wrap {
+  position: relative;
+  width: min(92vw, 440px);
+  border-radius: 30px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  border: 4px dashed #f3c98b;
+  background: #fffdf7;
+}
+.trace-wrap.trace-good { border-color: var(--matra); box-shadow: 0 0 0 6px #bbf7d0, var(--shadow); }
+#trace-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  touch-action: none;
+  cursor: crosshair;
+}
+.nav-btn.write { background: linear-gradient(180deg, #fff, #fde68a); }
+
+/* --------------------------- group mini-quiz --------------------------- */
+.quiz-pic {
+  font-size: clamp(5.5rem, 30vw, 8rem);
+  line-height: 1.1;
+  background: var(--card);
+  border-radius: 36px;
+  box-shadow: var(--shadow);
+  padding: 12px 32px;
+  animation: gentlePulse 2.4s infinite;
+}
+.qtiles { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+.qtiles .gtile { min-height: 104px; }
+.nav-btn.gnext { background: linear-gradient(135deg, #22c55e, #16a34a); color: #fff; }
+
 .letter-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));

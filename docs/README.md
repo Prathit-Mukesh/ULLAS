@@ -11,8 +11,11 @@ A free, offline-capable website that teaches a completely illiterate adult to re
 **Home page → 2 big cards: हिंदी (orange) and English (blue).**
 
 ### हिंदी path (7 steps)
-1. **स्वर** — all 13 vowels. Tap a letter → hear it → see a picture word (अ से अनानास 🍍, ऊ से ऊँट 🐪…)
-2. **व्यंजन** — all 36 consonants (क से कमल 🪷 … ज्ञ से ज्ञान 📚)
+1. **स्वर** — 13 vowels, taught **3–5 letters at a time**: each letter is spoken twice
+   slowly, shown with a picture word (अ से अनानास 🍍, ऊ से ऊँट 🐪…), can be
+   **finger-traced ✍️**, and each small group ends with an instant picture-quiz
+2. **व्यंजन** — all 36 consonants the same way, grouped in the traditional वर्ग rows
+   (क ख ग घ ङ · च छ ज झ ञ …)
 3. **मात्रा** — interactive बारहखड़ी chart: pick any consonant, tap का कि की कु…, see the formula `क + ◌ा = का` in colour
 4. **शब्द जोड़ो** — 2- and 3-letter words without matras (घ + र = घर 🏠). Tap each letter, then the green button blends them aloud
 5. **नए शब्द** — everyday words with matras (पानी, रोटी, दूध…). Matra syllables are green, plain letters blue; colour words appear *in their colour* (लाल in red)
@@ -23,12 +26,21 @@ A free, offline-capable website that teaches a completely illiterate adult to re
 Capital letters → small letters → two-letter blending (g + o = go) → 3-letter words (c-a-t = cat 🐱) → everyday words → sentences → game.
 **All instructions stay in Hindi voice** — only the content is English.
 
-### Design choices for non-readers
+### How it makes learning stick (designed for absolute beginners)
+- **Small batches**: letters come 3–5 at a time; the next group stays dimmed until the
+  current one is finished, so she is never facing a wall of 36 letters
+- **Learn → quiz → reward loop**: after each small group, a 6-question mini-quiz using
+  *only those letters* — hear the sound → tap the letter, or see the picture 🥭 → tap
+  the letter. Correct answers earn ⭐ and the group gets a ✅
+- **✍️ Finger tracing**: every letter can be traced with a finger over a large guide —
+  writing movement builds memory that looking alone cannot
+- **🗣️ Echo practice**: word and sentence playback ends with *"अब तुम बोलो"* (now you
+  say it), a pause for her to speak, then the word again to compare
 - 🔊 Every screen auto-speaks what to do; the speaker button repeats it any time
-- 🐢 Turtle button makes the voice speak slower
-- Huge touch targets, one action per screen, ⬅️ back and 🏠 home always in the same place
+- 🐢 Turtle button makes the voice even slower (letters are already spoken slowly, twice)
+- Huge touch targets, ⬅️ back and 🏠 home always in the same place
 - Colour system: **red = स्वर**, **blue = व्यंजन**, **green = मात्रा** — everywhere
-- ✔️ marks appear on letters already practised; stars persist between visits
+- Progress, stars and completed groups are saved on the phone between visits
 - Works offline after the first visit (it's an installable web app)
 
 ---
