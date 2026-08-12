@@ -164,6 +164,8 @@ function hasMatra(cluster) {
 
 /* ----------------------------- router ----------------------------- */
 let S = { screen: 'home' };
+/* after an accidental reload (e.g. pull-to-refresh) resume the same screen */
+try { if (history.state && history.state.screen) S = history.state; } catch (e) { /* ignore */ }
 let currentSpeak = null;   /* what the 🔊 repeat button says on this screen */
 let unlocked = false;      /* browsers need one tap before audio works */
 
@@ -185,6 +187,12 @@ function go(next, replace) {
   window.scrollTo(0, 0);
 }
 window.addEventListener('popstate', (e) => {
+  /* an OS edge-swipe "back" can fire mid-trace; while a finger is (or just
+     was) drawing, cancel the navigation and stay on the tracing screen */
+  if (S.screen === 'trace' && (T.drawing || Date.now() - (T.lastDraw || 0) < 800)) {
+    try { history.pushState(S, ''); } catch (err) { /* ignore */ }
+    return;
+  }
   Speech.stop();
   S = (e.state && e.state.screen) ? e.state : { screen: 'home' };
   render(false);
@@ -391,7 +399,7 @@ function renderLetterDetail() {
 }
 
 /* ----------------------- finger tracing (writing) ----------------------- */
-const T = { samples: [], covered: null, done: false, drawing: false, lastX: 0, lastY: 0 };
+const T = { samples: [], covered: null, done: false, drawing: false, lastX: 0, lastY: 0, lastDraw: 0 };
 
 function renderTrace() {
   const { lang, set } = S;
@@ -402,12 +410,20 @@ function renderTrace() {
   const disp = letterDisplay(it, set);
   currentSpeak = () => Speech.say(VOICE_TEXT.trace);
 
+  /* no ⬅️/🏠 up top here: while tracing, a stray palm touch near the top
+     must not be able to navigate away — leaving is the bottom ↩️ only */
   $app.innerHTML =
-    topbar('✍️', null) +
+    '<header class="topbar">' +
+      '<span class="tb-btn tb-badge" aria-hidden="true">✍️</span>' +
+      '<div class="tb-title"><span>' + esc(disp) + '</span></div>' +
+      '<button class="tb-btn tb-slow ' + (Speech.slow ? 'active' : '') + '" data-a="slow" aria-label="धीरे बोलो">🐢</button>' +
+      '<button class="tb-btn tb-sound" data-a="repeat" aria-label="फिर से सुनो">🔊</button>' +
+    '</header>' +
     '<div class="screen detail">' +
       '<div class="trace-wrap" id="trace-wrap">' +
         '<canvas id="trace-canvas" width="480" height="480"></canvas>' +
       '</div>' +
+      '<button class="blend-btn trace-next" id="trace-next" data-a="back">⭐ आगे ➡️</button>' +
       '<nav class="navrow">' +
         '<button class="nav-btn" data-a="traceClear" aria-label="मिटाओ">🧽</button>' +
         '<button class="nav-btn play" data-a="traceSay" aria-label="सुनो">🔊</button>' +
@@ -472,13 +488,13 @@ function setupTrace(letter, lang) {
       if (!T.covered[i]) {
         const dx = T.samples[i][0] - x;
         const dy = T.samples[i][1] - y;
-        if (dx * dx + dy * dy < BRUSH * BRUSH * 1.6) {
+        if (dx * dx + dy * dy < BRUSH * BRUSH * 1.3) {
           T.covered[i] = true;
           coveredCount++;
         }
       }
     }
-    if (!T.done && T.samples.length && coveredCount / T.samples.length >= 0.5) {
+    if (!T.done && T.samples.length && coveredCount / T.samples.length >= 0.55) {
       T.done = true;
       const wrap = document.getElementById('trace-wrap');
       if (wrap) {
@@ -488,10 +504,12 @@ function setupTrace(letter, lang) {
         s.textContent = '⭐';
         wrap.appendChild(s);
       }
+      /* no auto-exit: she leaves when SHE taps the green button */
+      const nextBtn = document.getElementById('trace-next');
+      if (nextBtn) nextBtn.classList.add('show');
       progress.traces++;
       Store.write(progress);
-      Speech.say(VOICE_TEXT.traceDone + ' ' + praise());
-      setTimeout(() => { if (S.screen === 'trace') history.back(); }, 1900);
+      Speech.say(VOICE_TEXT.traceDone + ' ' + praise() + ' हरा बटन दबाओ।');
     }
   };
 
@@ -509,6 +527,7 @@ function setupTrace(letter, lang) {
     ctx.lineTo(x, y);
     ctx.stroke();
     T.lastX = x; T.lastY = y;
+    T.lastDraw = Date.now();
     markAt(x, y);
   };
 
@@ -529,6 +548,7 @@ function setupTrace(letter, lang) {
   const up = () => { T.drawing = false; };
   canvas.addEventListener('pointerup', up);
   canvas.addEventListener('pointercancel', up);
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
   T.clear = () => {
     drawGuide();
@@ -537,6 +557,8 @@ function setupTrace(letter, lang) {
     T.done = false;
     const wrap = document.getElementById('trace-wrap');
     if (wrap) wrap.classList.remove('trace-good');
+    const nextBtn = document.getElementById('trace-next');
+    if (nextBtn) nextBtn.classList.remove('show');
   };
 }
 
@@ -981,6 +1003,8 @@ function render(autoSpeak) {
 $app.addEventListener('click', (ev) => {
   const btn = ev.target.closest('[data-a]');
   if (!btn) return;
+  /* while a finger is tracing, a resting palm must not press buttons */
+  if (S.screen === 'trace' && T.drawing) return;
   const a = btn.dataset.a;
   const i = parseInt(btn.dataset.i || '0', 10);
 

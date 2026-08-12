@@ -33,7 +33,13 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
-html, body { margin: 0; padding: 0; }
+html, body {
+  margin: 0;
+  padding: 0;
+  /* no pull-to-refresh / overscroll navigation — a downward finger-stroke
+     while tracing must never reload the page */
+  overscroll-behavior: none;
+}
 
 body {
   font-family: 'Noto Sans Devanagari', 'Noto Sans', 'Mangal', 'Hind',
@@ -253,6 +259,9 @@ button:active { transform: scale(0.96); }
   cursor: crosshair;
 }
 .nav-btn.write { background: linear-gradient(180deg, #fff, #fde68a); }
+.tb-badge { pointer-events: none; background: #fde68a; }
+.trace-next { display: none; }
+.trace-next.show { display: block; animation: gentlePulse 1.6s infinite; }
 
 /* --------------------------- group mini-quiz --------------------------- */
 .quiz-pic {
