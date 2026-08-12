@@ -38,12 +38,11 @@ Capital letters → small letters → two-letter blending (g + o = go) → 3-let
 The site is plain HTML/CSS/JS in this `docs/` folder — no build, no server.
 
 **GitHub Pages:**
-1. Merge this branch (or use it directly), then open the repository on GitHub
-2. **Settings → Pages**
-3. Under *Build and deployment*: Source = **Deploy from a branch**, Branch = your branch, Folder = **`/docs`** → Save
-4. After ~1 minute your site is live at `https://<username>.github.io/<repo-name>/`
+1. Open the repository (**Ullas**) on GitHub → **Settings → Pages**
+2. Under *Build and deployment*: Source = **Deploy from a branch**, Branch = **`claude/literacy-learning-website-ofh7sr`** (the repo's default branch), Folder = **`/docs`** → Save
+3. After ~1 minute the site is live at **`https://prathit-mukesh.github.io/Ullas/`**
 
-(Any static host works too — Netlify/Vercel drag-and-drop the `docs` folder.)
+(If you later rename the branch to `main` in Settings → Branches, GitHub keeps the Pages setting pointed at it automatically. Any static host works too — Netlify/Vercel can serve the `docs` folder.)
 
 ## 📱 Set up her phone (do this once)
 
