@@ -14,10 +14,15 @@ use it entirely on their own.
 - **[docs/README.md](docs/README.md)** — full guide: what's inside, how to deploy,
   how to set up the learner's phone, first-session tips, and how to customise the words.
 
-## 🚀 Quick deploy (GitHub Pages, free)
+## 🚀 Two easy ways to put it live (both free)
 
+**Vercel** — already set up: the repo's `vercel.json` makes Vercel serve the `docs/` folder
+directly (no build needed). Every push to `main` auto-deploys the site to the project's
+`*.vercel.app` URL.
+
+**GitHub Pages**
 1. **Settings → Pages**
-2. Source: **Deploy from a branch** → Branch: the default branch → Folder: **`/docs`** → Save
+2. Source: **Deploy from a branch** → Branch: **`main`** → Folder: **`/docs`** → Save
 3. Live in ~1 minute at **`https://prathit-mukesh.github.io/ULLAS/`**
 
 ## What it teaches
