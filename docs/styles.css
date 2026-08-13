@@ -126,6 +126,21 @@ button:active { transform: scale(0.96); }
 }
 .brand-sub { margin: 0 0 18px; color: var(--ink-soft); font-weight: 600; }
 
+.tts-note {
+  order: -1;
+  background: #fef3c7;
+  border: 3px solid #f59e0b;
+  border-radius: 20px;
+  padding: 12px 16px;
+  margin: 0 0 16px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-align: center;
+  color: #78350f;
+  line-height: 1.5;
+}
+.tts-note span { font-weight: 600; font-size: 0.85rem; opacity: 0.9; }
+
 .help-btn {
   font-size: 1.5rem;
   font-weight: 800;

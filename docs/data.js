@@ -267,6 +267,22 @@ const VOICE_TEXT = {
   praise: ['शाबाश!', 'बहुत बढ़िया!', 'वाह, सही जवाब!', 'एकदम सही!'],
 };
 
+/* ---------------- How each letter is SPOKEN (not how it is written) ----------------
+   Bare Devanagari consonants (क) are pronounced with the inherent vowel — "का"-like.
+   Many TTS voices clip a lone क into a hard "k", which confuses a new learner, so we
+   feed the engine the syllabic form. Only the spoken text changes; the screen still
+   shows the plain letter. */
+const LETTER_SAY = {
+  /* Bare vowel signs are read as punctuation by some voices, so anchor them
+     to a syllable that carries the same sound. */
+  'अं': 'अंग',
+  'अः': 'अः',
+  /* Voices that spell conjuncts out letter-by-letter get the joined syllable. */
+  'क्ष': 'क्ष',
+  'त्र': 'त्र',
+  'ज्ञ': 'ज्ञ',
+};
+
 /* --------- Letter groups: learn 3-5 letters at a time, then quiz --------- */
 /* Values are indices into the letter lists above. Hindi consonant groups
    follow the traditional वर्ग rows (क-वर्ग, च-वर्ग …). */

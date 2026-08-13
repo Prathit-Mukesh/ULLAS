@@ -37,17 +37,31 @@ function groupIsDone(lang, set, gi) { return !!progress.groups[groupKey(lang, se
 /* --------------------------- speech engine --------------------------- */
 const Speech = {
   voices: [],
-  slow: !!progress.slow,
+  /* slow is the DEFAULT for new learners; 🐢 toggles it off/on */
+  slow: progress.slow === undefined ? true : !!progress.slow,
   seqToken: 0,
   supported: 'speechSynthesis' in window,
 
   init() {
     if (!this.supported) return;
-    const load = () => { this.voices = speechSynthesis.getVoices() || []; };
+    const load = () => {
+      this.voices = speechSynthesis.getVoices() || [];
+      if (this.voices.length && this.pending) {
+        const p = this.pending;
+        this.pending = null;
+        p();
+      }
+    };
     load();
     if (speechSynthesis.onvoiceschanged !== undefined) {
       speechSynthesis.onvoiceschanged = load;
     }
+    /* some Android builds populate the list late and never fire the event */
+    let tries = 0;
+    const poll = setInterval(() => {
+      load();
+      if (this.voices.length || ++tries > 20) clearInterval(poll);
+    }, 250);
   },
 
   voiceFor(lang) {
@@ -64,13 +78,23 @@ const Speech = {
       }
     }
     const base = lang.slice(0, 2).toLowerCase();
-    return vs.find((v) => norm(v.lang).indexOf(base) === 0) || null;
+    const near = vs.find((v) => norm(v.lang).indexOf(base) === 0);
+    if (near) return near;
+    /* No Hindi voice at all: reading Devanagari with an English voice gives
+       the anglicised "A se Akhabar" sound. Report it so callers can switch
+       to phonetic Roman text instead. */
+    return null;
   },
 
-  /* slow, deliberate speech; 🐢 makes it slower still */
-  rate() { return this.slow ? 0.5 : 0.68; },
+  /* is a real Hindi voice available on this device? */
+  hasHindi() {
+    return !!this.voiceFor('hi-IN');
+  },
+
+  /* slow, deliberate speech; 🐢 (on by default) makes it slower still */
+  rate() { return this.slow ? 0.42 : 0.6; },
   /* very slow rate for single letters and word parts — stretched, full sounds */
-  letterRate() { return this.slow ? 0.38 : 0.52; },
+  letterRate() { return this.slow ? 0.3 : 0.42; },
 
   stop() {
     this.seqToken++;
@@ -82,18 +106,28 @@ const Speech = {
   utter(text, lang, cb, opts) {
     opts = opts || {};
     if (!this.supported || !text) { if (cb) setTimeout(cb, 200); return; }
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = lang || 'hi-IN';
+    lang = lang || 'hi-IN';
+    let say = text;
+    const v = this.voiceFor(lang);
+    /* No Hindi voice installed? Speak a Roman phonetic spelling with the
+       English voice instead of letting it mangle the Devanagari. */
+    if (!v && lang.indexOf('hi') === 0) {
+      say = romanise(text);
+      lang = 'en-IN';
+    }
+    const u = new SpeechSynthesisUtterance(say);
+    u.lang = lang;
     u.rate = opts.rate || this.rate();
     u.pitch = 1;        /* natural, fuller voice */
     u.volume = 1;       /* as loud as the device allows */
-    const v = this.voiceFor(u.lang);
-    if (v) { u.voice = v; u.lang = v.lang; }
+    const use = v || this.voiceFor(lang);
+    if (use) { u.voice = use; u.lang = use.lang; }
     let done = false;
     const finish = () => { if (done) return; done = true; if (cb) cb(); };
     u.onend = finish;
     u.onerror = finish;
-    setTimeout(finish, Math.max(2000, 320 * text.length) + 1500);
+    /* generous safety net: very slow rates make utterances long */
+    setTimeout(finish, Math.max(3000, 700 * say.length) + 2000);
     window.__aksharUtter = u; /* keep a reference: iOS GC workaround */
     try { speechSynthesis.speak(u); } catch (e) { finish(); }
   },
@@ -284,6 +318,111 @@ function shuffle(arr) {
   return a;
 }
 
+/* ---------------- Devanagari → Roman (fallback when no Hindi voice) ---------------- */
+const ROMAN_CONS = {
+  'क': 'k', 'ख': 'kh', 'ग': 'g', 'घ': 'gh', 'ङ': 'ng',
+  'च': 'ch', 'छ': 'chh', 'ज': 'j', 'झ': 'jh', 'ञ': 'ny',
+  'ट': 't', 'ठ': 'th', 'ड': 'd', 'ढ': 'dh', 'ण': 'n',
+  'त': 't', 'थ': 'th', 'द': 'd', 'ध': 'dh', 'न': 'n',
+  'प': 'p', 'फ': 'ph', 'ब': 'b', 'भ': 'bh', 'म': 'm',
+  'य': 'y', 'र': 'r', 'ल': 'l', 'व': 'v', 'ळ': 'l',
+  'श': 'sh', 'ष': 'sh', 'स': 's', 'ह': 'h',
+  'क़': 'k', 'ख़': 'kh', 'ग़': 'g', 'ज़': 'z', 'ड़': 'r', 'ढ़': 'rh', 'फ़': 'f',
+};
+const ROMAN_VOWEL = {   /* independent vowels */
+  'अ': 'a', 'आ': 'aa', 'इ': 'i', 'ई': 'ee', 'उ': 'u', 'ऊ': 'oo', 'ऋ': 'ri',
+  'ए': 'ay', 'ऐ': 'ai', 'ओ': 'o', 'औ': 'au', 'ॠ': 'ri',
+};
+const ROMAN_MATRA = {   /* dependent vowel signs */
+  '': 'a', 'ा': 'aa', 'ि': 'i', 'ी': 'ee', 'ु': 'u', 'ू': 'oo', 'ृ': 'ri',
+  'े': 'ay', 'ै': 'ai', 'ो': 'o', 'ौ': 'au',
+};
+/* consonant + combining nukta */
+const NUKTA = { 'क': 'k', 'ख': 'kh', 'ग': 'g', 'ज': 'z', 'ड': 'r', 'ढ': 'rh', 'फ': 'f' };
+/* words/letters Hindi pronounces irregularly */
+const ROMAN_FIX = { 'ज्ञ': 'gya', 'ज्ञान': 'gyaan', 'यज्ञ': 'yagya', 'क्ष': 'ksha' };
+
+/* Roman phonetic spelling of one Devanagari word, with Hindi schwa deletion
+   (अखबार → "akhbaar", not "akhabaara") so the English voice says something
+   close to the real sound. */
+function romaniseWord(word) {
+  const w = String(word);
+  if (ROMAN_FIX[w]) return ROMAN_FIX[w];
+  const chars = Array.from(w);
+  const segs = [];        /* {cons, vowel, inherent} */
+  let tail = '';
+  for (let i = 0; i < chars.length; i++) {
+    const c = chars[i];
+    if (ROMAN_VOWEL[c]) {
+      segs.push({ cons: '', vowel: ROMAN_VOWEL[c], inherent: false });
+      continue;
+    }
+    if (ROMAN_CONS[c]) {
+      let cons = ROMAN_CONS[c];
+      /* nukta (क़ ज़ ड़ …) may arrive as a combining mark */
+      if (chars[i + 1] === '़') {
+        cons = ROMAN_CONS[c + '़'] || NUKTA[c] || cons;
+        i++;
+      }
+      const seg = { cons: cons, vowel: 'a', inherent: true };
+      const nxt = chars[i + 1];
+      if (nxt === '्') { seg.vowel = ''; seg.inherent = false; i++; }
+      else if (nxt && ROMAN_MATRA[nxt] !== undefined && nxt !== '') {
+        seg.vowel = ROMAN_MATRA[nxt]; seg.inherent = false; i++;
+      }
+      segs.push(seg);
+      continue;
+    }
+    if (ROMAN_MATRA[c] !== undefined && c !== '' && segs.length) {
+      /* stray matra (e.g. after a nukta) — attach to the previous syllable */
+      const s = segs[segs.length - 1];
+      s.vowel = ROMAN_MATRA[c];
+      s.inherent = false;
+      continue;
+    }
+    if (c === 'ं' || c === 'ँ') { if (segs.length) segs[segs.length - 1].nasal = 'n'; else tail += 'n'; continue; }
+    if (c === 'ः') { if (segs.length) segs[segs.length - 1].nasal = 'h'; else tail += 'h'; continue; }
+    if (c === '।') { tail += '.'; continue; }
+    if (/[ऀ-ॿ]/.test(c)) continue;                     /* drop other marks */
+    tail += c;                                          /* latin/digits */
+  }
+
+  /* schwa deletion: word-final inherent 'a' goes (if >1 syllable), then any
+     inherent 'a' sitting between two vowelled syllables */
+  const n = segs.length;
+  if (n > 1) {
+    const last = segs[n - 1];
+    if (last.inherent && !last.nasal) last.vowel = '';
+    for (let i = n - 2; i >= 1; i--) {
+      const s = segs[i];
+      if (!s.inherent || s.nasal || !s.vowel) continue;
+      const prev = segs[i - 1];
+      const next = segs[i + 1];
+      if (prev && prev.vowel && next && next.vowel) s.vowel = '';
+    }
+    /* a conjunct like क्ष must not end up vowel-less ("ksh") */
+    if (!segs.some((s) => s.vowel)) segs[n - 1].vowel = 'a';
+  }
+  return segs.map((s) => s.cons + s.vowel + (s.nasal || '')).join('') + tail;
+}
+
+function romanise(text) {
+  return String(text)
+    .split(/(\s+)/)
+    .map((part) => (/\s/.test(part) ? part : romaniseWord(part)))
+    .join('');
+}
+
+/* How a single letter should be SPOKEN aloud. Devanagari consonants are
+   written bare (क) but pronounced with the inherent vowel (का-like "ka"),
+   and TTS engines often clip them; adding the vowel makes the sound full
+   and unmistakable for a first-time learner. */
+function letterSpeech(ch, lang) {
+  if (lang === 'en') return ch.toUpperCase();
+  if (LETTER_SAY && LETTER_SAY[ch]) return LETTER_SAY[ch];
+  return ch;
+}
+
 /* --------------------- Devanagari cluster helpers --------------------- */
 function clusters(word, lang) {
   if (lang === 'en') return word.split('');
@@ -390,8 +529,15 @@ function wordHTML(word, lang, hlIndex, colorize) {
 
 function renderHome() {
   currentSpeak = () => Speech.say(VOICE_TEXT.welcome);
+  /* If the device has no Hindi TTS voice the app falls back to Roman
+     phonetics, which sounds anglicised — tell whoever set up the phone. */
+  const noHindi = Speech.supported && Speech.voices.length && !Speech.hasHindi();
+  const notice = noHindi
+    ? '<p class="tts-note">🔈 हिंदी आवाज़ नहीं मिली &middot; <b>Hindi voice not installed</b><br>' +
+      '<span>Settings → Text-to-speech → Google → install हिन्दी</span></p>'
+    : '';
   $app.innerHTML =
-    '<div class="screen home">' +
+    '<div class="screen home">' + notice +
       '<div class="brand">' +
         '<div class="brand-icon">📖</div>' +
         '<h1>अक्षर ज्ञान</h1>' +
@@ -525,17 +671,21 @@ function renderLetterDetail() {
   currentSpeak = () => {
     const bigEl = document.querySelector('.big-letter');
     const wordEl = document.querySelector('.word-card');
-    /* letter twice (slow), then the picture word, then an occasional trace hint */
+    const say = letterSpeech(it.ch, lang);
+    /* letter twice (very slow), then "<letter> से <word>" as SEPARATE
+       utterances so neither the letter nor the word gets rushed */
     const items = [
-      { text: it.ch, lang: speakLang, el: bigEl, opts: lr, gap: 420 },
-      { text: it.ch, lang: speakLang, el: bigEl, opts: lr, gap: 420 },
+      { text: say, lang: speakLang, el: bigEl, opts: lr, gap: 700 },
+      { text: say, lang: speakLang, el: bigEl, opts: lr, gap: 700 },
     ];
     if (it.word) {
-      items.push({
-        text: lang === 'hi' ? (it.hint ? it.hint : it.ch + ' से ' + it.word) : it.ch + ' for ' + it.word,
-        lang: speakLang,
-        el: wordEl,
-      });
+      if (it.hint) {
+        items.push({ text: it.hint, lang: 'hi-IN', el: wordEl });
+      } else {
+        items.push({ text: say, lang: speakLang, el: bigEl, opts: lr, gap: 260 });
+        items.push({ text: lang === 'hi' ? 'से' : 'for', lang: 'hi-IN', gap: 260 });
+        items.push({ text: it.word, lang: speakLang, el: wordEl, opts: lr, gap: 0 });
+      }
     } else if (it.hint) {
       items.push({ text: it.hint, lang: 'hi-IN', el: wordEl });
     }
@@ -783,7 +933,7 @@ function quizPrompt() {
   if (r.type === 'sound') {
     Speech.seq([
       { text: 'कौन सा अक्षर?', lang: 'hi-IN', gap: 200 },
-      { text: it.ch, lang: speakLang, opts: { rate: Speech.letterRate() } },
+      { text: letterSpeech(it.ch, Q.lang), lang: speakLang, opts: { rate: Speech.letterRate() } },
     ]);
   } else if (r.type === 'pic') {
     Speech.seq([
@@ -869,7 +1019,7 @@ function quizAnswer(i) {
   const it = letterSet(Q.lang, Q.set)[r.abs];
   const speakLang = Q.lang === 'hi' ? 'hi-IN' : 'en-IN';
   if (ok) {
-    quizCorrect(el, praise() + ' ' + it.ch, speakLang);
+    quizCorrect(el, praise() + ' ' + letterSpeech(it.ch, Q.lang), speakLang);
   } else {
     /* re-queue this round once at the end — 100% means answering it right later too */
     if (!r.requeued) {
@@ -883,7 +1033,7 @@ function quizAnswer(i) {
     Speech.seq([
       { text: VOICE_TEXT.tryAgain, lang: 'hi-IN', gap: 200 },
       r.type === 'sound'
-        ? { text: it.ch, lang: speakLang, opts: { rate: Speech.letterRate() } }
+        ? { text: letterSpeech(it.ch, Q.lang), lang: speakLang, opts: { rate: Speech.letterRate() } }
         : { text: it.word, lang: speakLang },
     ]);
   }
@@ -928,7 +1078,7 @@ function micTap() {
       }
 
       if (alts && speechMatches(it.ch, alts, Q.lang)) {
-        quizCorrect(el, praise() + ' ' + it.ch, speakLang);
+        quizCorrect(el, praise() + ' ' + letterSpeech(it.ch, Q.lang), speakLang);
         return;
       }
 
@@ -945,7 +1095,7 @@ function micTap() {
       r.tries = (r.tries || 0) + 1;
       if (r.tries >= 3) {
         /* three honest attempts: replay the sound once more and move on */
-        quizCorrect(el, VOICE_TEXT.voiceGrace + ' ' + it.ch, speakLang);
+        quizCorrect(el, VOICE_TEXT.voiceGrace + ' ' + letterSpeech(it.ch, Q.lang), speakLang);
         return;
       }
       if (el) {
@@ -954,7 +1104,7 @@ function micTap() {
       }
       Speech.seq([
         { text: VOICE_TEXT.voiceRetry, lang: 'hi-IN', gap: 250 },
-        { text: it.ch, lang: speakLang, opts: { rate: Speech.letterRate() }, gap: 250 },
+        { text: letterSpeech(it.ch, Q.lang), lang: speakLang, opts: { rate: Speech.letterRate() }, gap: 250 },
         { text: VOICE_TEXT.voiceAgain, lang: 'hi-IN' },
       ]);
     }, () => {
@@ -1348,7 +1498,7 @@ $app.addEventListener('click', (ev) => {
       const groups = letterGroups(S.lang, S.set);
       const it = letterSet(S.lang, S.set)[groups[S.gi][S.li]];
       btn.classList.remove('pop'); void btn.offsetWidth; btn.classList.add('pop');
-      Speech.say(it.ch, S.lang === 'hi' ? 'hi-IN' : 'en-IN', { rate: Speech.letterRate() });
+      Speech.say(letterSpeech(it.ch, S.lang), S.lang === 'hi' ? 'hi-IN' : 'en-IN', { rate: Speech.letterRate() });
       break;
     }
 
@@ -1367,11 +1517,20 @@ $app.addEventListener('click', (ev) => {
       if (!e) break;
       btn.classList.remove('pop'); void btn.offsetWidth; btn.classList.add('pop');
       const sl = S.lang === 'hi' ? 'hi-IN' : 'en-IN';
+      const lr2 = { rate: Speech.letterRate() };
       const starts = S.lang === 'en'
         ? e.word.charAt(0).toUpperCase() === it.ch
         : baseCluster(e.word) === (baseCluster(it.ch) || it.ch);
-      const phrase = S.lang === 'hi' ? (it.ch + ' से ' + e.word) : (it.ch + ' for ' + e.word);
-      Speech.say(starts ? phrase : e.word, sl);
+      /* separate utterances: "क" … "से" … "कप" — never one rushed phrase */
+      if (starts) {
+        Speech.seq([
+          { text: letterSpeech(it.ch, S.lang), lang: sl, opts: lr2, gap: 260 },
+          { text: S.lang === 'hi' ? 'से' : 'for', lang: 'hi-IN', gap: 260 },
+          { text: e.word, lang: sl, opts: lr2, gap: 0 },
+        ]);
+      } else {
+        Speech.say(e.word, sl, lr2);
+      }
       break;
     }
 
@@ -1387,7 +1546,7 @@ $app.addEventListener('click', (ev) => {
     case 'traceSay': {
       const groups = letterGroups(S.lang, S.set);
       const it = letterSet(S.lang, S.set)[groups[S.gi][S.li]];
-      Speech.say(it.ch, S.lang === 'hi' ? 'hi-IN' : 'en-IN', { rate: Speech.letterRate() });
+      Speech.say(letterSpeech(it.ch, S.lang), S.lang === 'hi' ? 'hi-IN' : 'en-IN', { rate: Speech.letterRate() });
       break;
     }
 

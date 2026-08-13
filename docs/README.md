@@ -49,7 +49,13 @@ Capital letters → small letters → two-letter blending (g + o = go) → 3-let
 - **🗣️ Echo practice**: word and sentence playback ends with *"अब तुम बोलो"* (now you
   say it), a pause for her to speak, then the word again to compare
 - 🔊 Every screen auto-speaks what to do; the speaker button repeats it any time
-- 🐢 Turtle button makes the voice even slower (letters are already spoken slowly, twice)
+- 🐢 **Slow speech is ON by default.** Letters are spoken very slowly and twice over;
+  "क से कप" is said as three separate pieces (क … से … कप) so nothing runs together.
+  Tap 🐢 to switch to normal speed once she is comfortable
+- **If the phone has no Hindi voice**, the browser would otherwise read Devanagari with
+  an English voice (the anglicised "A se Akhabar" sound). The app detects this, warns on
+  the home screen, and falls back to correct Roman phonetics (अखबार → "akhbaar") — but
+  installing the Hindi voice is much better, see phone setup below
 - Huge touch targets, ⬅️ back and 🏠 home always in the same place
 - Colour system: **red = स्वर**, **blue = व्यंजन**, **green = मात्रा** — everywhere
 - Progress, stars and completed groups are saved on the phone between visits
@@ -70,9 +76,12 @@ The site is plain HTML/CSS/JS in this `docs/` folder — no build, no server.
 
 ## 📱 Set up her phone (do this once)
 
-1. **Install a good Hindi voice** (most Android phones already have it):
+1. **Install a good Hindi voice — this is the single most important step.** Without it
+   the app is forced to fake Hindi with an English voice, which sounds wrong to a
+   learner. If the home screen shows a yellow "Hindi voice not installed" box, do this:
    - Play Store → **Speech Recognition & Synthesis** (Google) → install/update
    - Phone Settings → search **"Text-to-speech"** → engine: Google → Language: **हिन्दी** → install voice data
+   - Restart the app; the yellow box disappears when the Hindi voice is found
    - This also makes the voice work **without internet**
 2. Open the site in **Chrome** → menu ⋮ → **"Add to Home screen"** → now she has an app icon 📖 named **अक्षर ज्ञान** — one tap, full screen, no browser buttons
 3. Raise the media volume 🔊
