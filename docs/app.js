@@ -127,6 +127,118 @@ function praise() {
   const p = VOICE_TEXT.praise;
   return p[Math.floor(Math.random() * p.length)];
 }
+
+/* ----------------------- voice recognition (बोलो test) ----------------------- */
+/* Latin fallbacks: hi-IN recognition sometimes returns romanised text */
+const TRANSLIT = {
+  'अ': ['a', 'uh'], 'आ': ['aa', 'a', 'ah'], 'इ': ['i', 'e'], 'ई': ['ee', 'e', 'i'],
+  'उ': ['u', 'oo', 'woo'], 'ऊ': ['oo', 'u'], 'ऋ': ['ri', 'ru', 'ree'], 'ए': ['a', 'ay', 'e', 'yay'],
+  'ऐ': ['ai', 'ae', 'i'], 'ओ': ['o', 'oh', 'wo'], 'औ': ['au', 'ao', 'ou', 'aww'],
+  'अं': ['am', 'an', 'un', 'ang'], 'अः': ['aha', 'ah', 'aha:'],
+  'क': ['ka', 'ca', 'k', 'kah'], 'ख': ['kha', 'ka'], 'ग': ['ga', 'gaa'], 'घ': ['gha', 'ga'],
+  'ङ': ['nga', 'na'], 'च': ['cha', 'ch'], 'छ': ['chha', 'cha'], 'ज': ['ja', 'jaa'],
+  'झ': ['jha', 'ja'], 'ञ': ['nya', 'na'], 'ट': ['ta', 'tta'], 'ठ': ['tha', 'ta'],
+  'ड': ['da', 'dda'], 'ढ': ['dha', 'da'], 'ण': ['na'], 'त': ['ta', 'tha'], 'थ': ['tha', 'ta'],
+  'द': ['da', 'the', 'dha'], 'ध': ['dha', 'da'], 'न': ['na', 'nah'], 'प': ['pa', 'paa'],
+  'फ': ['pha', 'fa', 'fha'], 'ब': ['ba', 'baa'], 'भ': ['bha', 'ba'], 'म': ['ma', 'maa'],
+  'य': ['ya', 'yaa'], 'र': ['ra', 'raa'], 'ल': ['la', 'laa'], 'व': ['va', 'wa'],
+  'श': ['sha', 'sa'], 'ष': ['sha', 'sa'], 'स': ['sa', 'sha'], 'ह': ['ha', 'haa'],
+  'क्ष': ['ksha', 'chha', 'sha'], 'त्र': ['tra', 'ta'], 'ज्ञ': ['gya', 'gyan', 'gna'],
+};
+/* what English letter names sound like to the recogniser */
+const EN_NAMES = {
+  A: ['a', 'ay', 'hey', 'eh'], B: ['b', 'be', 'bee'], C: ['c', 'see', 'sea', 'si'],
+  D: ['d', 'de', 'dee', 'the'], E: ['e', 'ee', 'he'], F: ['f', 'ef', 'eff'],
+  G: ['g', 'je', 'jee', 'gee'], H: ['h', 'aitch', 'etch', 'hech'], I: ['i', 'eye', 'ai'],
+  J: ['j', 'jay', 'je'], K: ['k', 'kay', 'ke', 'okay'], L: ['l', 'el', 'yell'],
+  M: ['m', 'em', 'am'], N: ['n', 'en', 'and'], O: ['o', 'oh', 'wo'], P: ['p', 'pe', 'pee'],
+  Q: ['q', 'cue', 'queue', 'kyu'], R: ['r', 'are', 'aar'], S: ['s', 'es', 'yes'],
+  T: ['t', 'tea', 'tee', 'ti'], U: ['u', 'you', 'yu'], V: ['v', 've', 'we', 'vee'],
+  W: ['w', 'double you', 'double u', 'dabbu', 'dablu'], X: ['x', 'ex', 'axe', 'eks'],
+  Y: ['y', 'why', 'vay', 'wai'], Z: ['z', 'zed', 'zee', 'jed'],
+};
+
+function baseCluster(text) {
+  const cs = clusters(String(text).trim(), 'hi');
+  if (!cs.length) return '';
+  /* strip vowel signs / anusvara / nukta from the first cluster */
+  return cs[0].replace(/[ऺ-़ा-ॗ]/g, '');
+}
+
+/* does any recognised alternative sound like the expected letter? Generous. */
+function speechMatches(expected, alts, lang) {
+  for (const raw of alts) {
+    const t = String(raw || '').trim().toLowerCase().replace(/[.।,!?]/g, '');
+    if (!t) continue;
+    if (lang === 'en') {
+      const ch = expected.toLowerCase();
+      const names = EN_NAMES[expected.toUpperCase()] || [];
+      const first = t.split(/\s+/)[0];
+      if (t === ch || first === ch || names.indexOf(t) !== -1 || names.indexOf(first) !== -1) return true;
+      if (first.charAt(0) === ch) return true;
+    } else {
+      if (t === expected) return true;
+      if (/[ऀ-ॿ]/.test(t)) {
+        const said = baseCluster(t);
+        const want = baseCluster(expected) || expected;
+        if (said && said === want) return true;
+        if (t.indexOf(expected) === 0) return true;
+      } else {
+        const latin = t.replace(/[^a-z ]/g, '');
+        const first = latin.split(/\s+/)[0];
+        const opts = TRANSLIT[expected] || [];
+        for (const o of opts) {
+          if (latin === o || first === o || first.indexOf(o) === 0) return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+const Recog = {
+  Ctor: window.SpeechRecognition || window.webkitSpeechRecognition || null,
+  broken: false,          /* set when mic/permission/network proves unusable */
+  active: null,
+  supported() { return !!this.Ctor && !this.broken; },
+  stop() {
+    if (this.active) { try { this.active.abort(); } catch (e) { /* ignore */ } this.active = null; }
+  },
+  /* listen once; cb(alternatives[] | null on silence, errType | null) */
+  listen(lang, cb) {
+    if (!this.supported()) { cb(null, 'unsupported'); return; }
+    let finished = false;
+    const done = (alts, err) => {
+      if (finished) return;
+      finished = true;
+      this.active = null;
+      cb(alts, err);
+    };
+    let rec;
+    try { rec = new this.Ctor(); } catch (e) { this.broken = true; done(null, 'unsupported'); return; }
+    rec.lang = lang;
+    rec.interimResults = false;
+    rec.maxAlternatives = 5;
+    rec.continuous = false;
+    rec.onresult = (ev) => {
+      const alts = [];
+      try {
+        const res = ev.results[0];
+        for (let i = 0; i < res.length; i++) alts.push(res[i].transcript);
+      } catch (e) { /* ignore */ }
+      done(alts.length ? alts : null, null);
+    };
+    rec.onerror = (ev) => {
+      const t = ev && ev.error;
+      if (t === 'not-allowed' || t === 'service-not-allowed' || t === 'audio-capture') this.broken = true;
+      done(null, t || 'error');
+    };
+    rec.onend = () => done(null, null); /* ended with no result = silence */
+    this.active = rec;
+    try { rec.start(); } catch (e) { done(null, 'error'); return; }
+    setTimeout(() => { if (!finished) { try { rec.stop(); } catch (e) { /* ignore */ } } }, 6000);
+  },
+};
 function shuffle(arr) {
   const a = arr.slice();
   for (let i = a.length - 1; i > 0; i--) {
@@ -178,6 +290,7 @@ document.addEventListener('pointerdown', () => {
 
 function go(next, replace) {
   Speech.stop();
+  Recog.stop();
   S = next;
   try {
     if (replace) history.replaceState(S, '');
@@ -194,6 +307,7 @@ window.addEventListener('popstate', (e) => {
     return;
   }
   Speech.stop();
+  Recog.stop();
   S = (e.state && e.state.screen) ? e.state : { screen: 'home' };
   render(false);
 });
@@ -264,19 +378,40 @@ function renderHome() {
     '</div>';
 }
 
+/* every group test of a letter step cleared? */
+function lettersStepDone(lang, set) {
+  const gs = letterGroups(lang, set);
+  for (let i = 0; i < gs.length; i++) {
+    if (!groupIsDone(lang, set, i)) return false;
+  }
+  return true;
+}
+/* steps stay locked until the letter tests before them are 100% cleared */
+function stepLocked(lang, idx) {
+  if (idx === 0) return false;
+  if (lang === 'hi') {
+    if (idx === 1) return !lettersStepDone('hi', 'vowels');
+    return !(lettersStepDone('hi', 'vowels') && lettersStepDone('hi', 'consonants'));
+  }
+  if (idx === 1) return !lettersStepDone('en', 'caps');
+  return !(lettersStepDone('en', 'caps') && lettersStepDone('en', 'smalls'));
+}
+
 function renderLangHome() {
   const lang = S.lang;
   const steps = STEPS[lang];
   currentSpeak = () => Speech.say(lang === 'hi' ? VOICE_TEXT.langHomeHi : VOICE_TEXT.langHomeEn);
   const cards = steps.map((st, i) => {
+    const locked = stepLocked(lang, i);
     const stars = st.id === 'game'
       ? starCount(lang + '-letters') + starCount(lang + '-words') : 0;
     return (
-      '<button class="step-card ' + st.cls + '" data-a="step" data-i="' + i + '">' +
+      '<button class="step-card ' + st.cls + (locked ? ' locked' : '') + '"' +
+        ' data-a="' + (locked ? 'lockedStep' : 'step') + '" data-i="' + i + '">' +
         '<span class="sc-num">' + (i + 1) + '</span>' +
         '<span class="sc-mid"><span class="sc-preview">' + esc(st.preview) + '</span>' +
           '<span class="sc-label">' + esc(st.label) + '</span></span>' +
-        '<span class="sc-emoji">' + st.emoji +
+        '<span class="sc-emoji">' + (locked ? '🔒' : st.emoji) +
           (stars ? '<span class="sc-stars">⭐ ' + stars + '</span>' : '') + '</span>' +
       '</button>'
     );
@@ -314,9 +449,11 @@ function renderGroups() {
   const cards = groups.map((g, i) => {
     const done = groupIsDone(lang, set, i);
     const state = done ? 'done' : (i === current ? 'current' : 'later');
+    const locked = !done && i !== current;   /* hard lock until the previous test is cleared */
     const letters = g.map((abs) => letterDisplay(list[abs], set)).join(' ');
     return (
-      '<button class="grp ' + state + ' ' + (isVowelish ? 'c-vowel' : 'c-cons') + '" data-a="group" data-i="' + i + '">' +
+      '<button class="grp ' + state + ' ' + (isVowelish ? 'c-vowel' : 'c-cons') + '"' +
+        ' data-a="' + (locked ? 'lockedGroup' : 'group') + '" data-i="' + i + '">' +
         '<span class="grp-num">' + (i + 1) + '</span>' +
         '<span class="grp-letters">' + esc(letters) + '</span>' +
         '<span class="grp-state">' + (done ? '✅' : i === current ? '👉' : '🔒') + '</span>' +
@@ -562,21 +699,29 @@ function setupTrace(letter, lang) {
   };
 }
 
-/* --------------------------- group mini-quiz --------------------------- */
+/* --------------------------- group test --------------------------- */
+/* Tap rounds (hear→tap, picture→tap) + voice rounds (see→speak into 🎤).
+   Every round must be answered correctly to finish; a wrong tap re-queues
+   that round at the end, so the test is only cleared at 100%. */
 let Q = null;
 
 function startGroupQuiz(lang, set, gi, replace) {
   const list = letterSet(lang, set);
   const group = letterGroups(lang, set)[gi];
-  const rounds = [];
+  const taps = [];
   group.forEach((abs) => {
     const it = list[abs];
-    if (!it.rare) rounds.push({ type: 'sound', abs });
-    if (it.word && !it.hl && !it.rare) rounds.push({ type: 'pic', abs });
+    if (!it.rare) taps.push({ type: 'sound', abs });
+    if (it.word && !it.hl && !it.rare) taps.push({ type: 'pic', abs });
   });
-  const picked = shuffle(rounds).slice(0, 6);
-  picked.forEach((r) => { r.options = shuffle(group.slice()); });
-  Q = { lang, set, gi, rounds: picked, i: 0, stars: 0, locked: false };
+  const rounds = shuffle(taps).slice(0, 6);
+  rounds.forEach((r) => { r.options = shuffle(group.slice()); });
+  /* voice part: every letter of the group is shown and must be spoken */
+  if (Recog.supported()) {
+    shuffle(group.filter((abs) => !list[abs].rare))
+      .forEach((abs) => rounds.push({ type: 'voice', abs, tries: 0 }));
+  }
+  Q = { lang, set, gi, rounds, i: 0, stars: 0, locked: false, listening: false };
   go({ screen: 'gquiz', lang, set, gi }, replace);
 }
 
@@ -590,11 +735,14 @@ function quizPrompt() {
       { text: 'कौन सा अक्षर?', lang: 'hi-IN', gap: 200 },
       { text: it.ch, lang: speakLang, opts: { rate: Speech.letterRate() } },
     ]);
-  } else {
+  } else if (r.type === 'pic') {
     Speech.seq([
       { text: it.word, lang: speakLang, gap: 250 },
       { text: VOICE_TEXT.quizPic, lang: 'hi-IN' },
     ]);
+  } else {
+    /* voice round: do NOT speak the letter — she has to read it */
+    Speech.say(VOICE_TEXT.voicePrompt);
   }
 }
 
@@ -604,60 +752,80 @@ function renderGroupQuiz() {
   const list = letterSet(Q.lang, Q.set);
   const it = list[r.abs];
   currentSpeak = quizPrompt;
+  const isVowelish = Q.set === 'vowels' || Q.set === 'smalls';
 
-  const prompt = r.type === 'pic'
-    ? '<button class="quiz-pic" data-a="repeat">' + (it.emoji || '🔊') + '</button>'
-    : '<button class="listen-big" data-a="repeat">🔊<span>सुनो</span></button>';
-
-  const tiles = r.options.map((abs, i) =>
-    '<button class="gtile big qopt" data-a="qanswer" data-i="' + i + '">' +
-      esc(letterDisplay(list[abs], Q.set)) + '</button>'
-  ).join('');
+  let middle;
+  if (r.type === 'voice') {
+    middle =
+      '<div class="voice-letter big-letter ' + (isVowelish ? 'c-vowel' : 'c-cons') + '">' +
+        esc(letterDisplay(it, Q.set)) + '</div>' +
+      '<button class="mic-btn' + (Q.listening ? ' listening' : '') + '" data-a="mic">🎤<span>बोलो</span></button>';
+  } else {
+    const prompt = r.type === 'pic'
+      ? '<button class="quiz-pic" data-a="repeat">' + (it.emoji || '🔊') + '</button>'
+      : '<button class="listen-big" data-a="repeat">🔊<span>सुनो</span></button>';
+    const tiles = r.options.map((abs, i) =>
+      '<button class="gtile big qopt" data-a="qanswer" data-i="' + i + '">' +
+        esc(letterDisplay(list[abs], Q.set)) + '</button>'
+    ).join('');
+    middle = prompt + '<div class="gtiles qtiles">' + tiles + '</div>';
+  }
 
   $app.innerHTML =
-    topbar((Q.i + 1) + '/' + Q.rounds.length, '🎯') +
+    topbar((Q.i + 1) + '/' + Q.rounds.length, r.type === 'voice' ? '🎤' : '🎯') +
     '<div class="screen game">' +
       '<div class="game-stars">⭐ <span id="g-stars">' + Q.stars + '</span></div>' +
-      prompt +
-      '<div class="gtiles qtiles">' + tiles + '</div>' +
+      middle +
       counterDots(Q.rounds.length, Q.i) +
     '</div>';
+}
+
+/* round answered correctly → celebrate → next round or finish */
+function quizCorrect(el, sayText, sayLang) {
+  Q.locked = true;
+  Q.stars++;
+  addStar(Q.lang + '-letters');
+  if (el) {
+    el.classList.add('right');
+    const s = document.createElement('span');
+    s.className = 'star-burst';
+    s.textContent = '⭐';
+    el.appendChild(s);
+  }
+  const counter = document.getElementById('g-stars');
+  if (counter) counter.textContent = String(Q.stars);
+  Speech.say(sayText, sayLang);
+  setTimeout(() => {
+    if (S.screen !== 'gquiz') return;
+    Q.i++;
+    Q.locked = false;
+    Q.listening = false;
+    if (Q.i >= Q.rounds.length) {
+      progress.groups[groupKey(Q.lang, Q.set, Q.gi)] = 1;
+      Store.write(progress);
+      go({ screen: 'gquizDone', lang: Q.lang, set: Q.set, gi: Q.gi }, true);
+    } else {
+      render(true);
+    }
+  }, 1500);
 }
 
 function quizAnswer(i) {
   if (!Q || Q.locked) return;
   const r = Q.rounds[Q.i];
+  if (r.type === 'voice') return;
   const el = document.querySelectorAll('.qopt')[i];
   const ok = r.options[i] === r.abs;
   const it = letterSet(Q.lang, Q.set)[r.abs];
   const speakLang = Q.lang === 'hi' ? 'hi-IN' : 'en-IN';
   if (ok) {
-    Q.locked = true;
-    Q.stars++;
-    addStar(Q.lang + '-letters');
-    if (el) {
-      el.classList.add('right');
-      const s = document.createElement('span');
-      s.className = 'star-burst';
-      s.textContent = '⭐';
-      el.appendChild(s);
-    }
-    const counter = document.getElementById('g-stars');
-    if (counter) counter.textContent = String(Q.stars);
-    Speech.say(praise() + ' ' + it.ch, speakLang);
-    setTimeout(() => {
-      if (S.screen !== 'gquiz') return;
-      Q.i++;
-      Q.locked = false;
-      if (Q.i >= Q.rounds.length) {
-        progress.groups[groupKey(Q.lang, Q.set, Q.gi)] = 1;
-        Store.write(progress);
-        go({ screen: 'gquizDone', lang: Q.lang, set: Q.set, gi: Q.gi }, true);
-      } else {
-        render(true);
-      }
-    }, 1500);
+    quizCorrect(el, praise() + ' ' + it.ch, speakLang);
   } else {
+    /* re-queue this round once at the end — 100% means answering it right later too */
+    if (!r.requeued) {
+      r.requeued = true;
+      Q.rounds.push({ type: r.type, abs: r.abs, options: shuffle(r.options.slice()), requeued: true });
+    }
     if (el) {
       el.classList.add('wrong');
       setTimeout(() => el.classList.remove('wrong'), 700);
@@ -669,6 +837,54 @@ function quizAnswer(i) {
         : { text: it.word, lang: speakLang },
     ]);
   }
+}
+
+/* 🎤 tapped on a voice round */
+function micTap() {
+  if (!Q || Q.locked || Q.listening) return;
+  const r = Q.rounds[Q.i];
+  if (!r || r.type !== 'voice') return;
+  const it = letterSet(Q.lang, Q.set)[r.abs];
+  const speakLang = Q.lang === 'hi' ? 'hi-IN' : 'en-IN';
+  const micEl = document.querySelector('.mic-btn');
+
+  Speech.stop();               /* never let TTS leak into the microphone */
+  Q.listening = true;
+  if (micEl) micEl.classList.add('listening');
+
+  Recog.listen(speakLang, (alts, err) => {
+    if (!Q || S.screen !== 'gquiz' || Q.rounds[Q.i] !== r) return;
+    Q.listening = false;
+    const el = document.querySelector('.mic-btn');
+    if (el) el.classList.remove('listening');
+
+    /* mic/permission/network is broken → don't trap her: pass gracefully */
+    if (err && (err === 'unsupported' || Recog.broken || err === 'network')) {
+      quizCorrect(el, VOICE_TEXT.micFail, 'hi-IN');
+      return;
+    }
+
+    if (alts && speechMatches(it.ch, alts, Q.lang)) {
+      quizCorrect(el, praise() + ' ' + it.ch, speakLang);
+      return;
+    }
+
+    r.tries = (r.tries || 0) + 1;
+    if (r.tries >= 3) {
+      /* three honest attempts: replay the sound once more and move on */
+      quizCorrect(el, VOICE_TEXT.voiceGrace + ' ' + it.ch, speakLang);
+      return;
+    }
+    if (el) {
+      el.classList.add('wrong');
+      setTimeout(() => el.classList.remove('wrong'), 700);
+    }
+    Speech.seq([
+      { text: VOICE_TEXT.voiceRetry, lang: 'hi-IN', gap: 250 },
+      { text: it.ch, lang: speakLang, opts: { rate: Speech.letterRate() }, gap: 250 },
+      { text: VOICE_TEXT.voiceAgain, lang: 'hi-IN' },
+    ]);
+  });
 }
 
 function renderGroupQuizDone() {
@@ -1084,6 +1300,20 @@ $app.addEventListener('click', (ev) => {
 
     case 'qanswer':
       quizAnswer(i);
+      break;
+
+    case 'mic':
+      micTap();
+      break;
+
+    case 'lockedGroup':
+      btn.classList.remove('shake-it'); void btn.offsetWidth; btn.classList.add('shake-it');
+      Speech.say(VOICE_TEXT.lockedGroup);
+      break;
+
+    case 'lockedStep':
+      btn.classList.remove('shake-it'); void btn.offsetWidth; btn.classList.add('shake-it');
+      Speech.say(VOICE_TEXT.lockedStep);
       break;
 
     case 'gredo':

@@ -29,9 +29,20 @@ Capital letters → small letters → two-letter blending (g + o = go) → 3-let
 ### How it makes learning stick (designed for absolute beginners)
 - **Small batches**: letters come 3–5 at a time; the next group stays dimmed until the
   current one is finished, so she is never facing a wall of 36 letters
-- **Learn → quiz → reward loop**: after each small group, a 6-question mini-quiz using
-  *only those letters* — hear the sound → tap the letter, or see the picture 🥭 → tap
-  the letter. Correct answers earn ⭐ and the group gets a ✅
+- **Learn → test → reward loop**: after each small group, a test using *only those
+  letters* — hear the sound → tap the letter, see the picture 🥭 → tap the letter, and a
+  **🎤 voice round for every letter**: the letter appears on screen, she taps the mic and
+  says it aloud, and the phone's speech recognition checks her pronunciation. A wrong tap
+  re-queues that question, so the test is only cleared at 100%. Correct answers earn ⭐
+  and the group gets a ✅
+- **Hard locks**: the next letter group stays 🔒 until the current group's test is fully
+  cleared, and all later lessons (मात्रा, शब्द, वाक्य, खेल) stay 🔒 until *every* letter
+  test is passed — letters truly come first
+- **Voice rounds are forgiving by design**: recognising a single spoken letter is hard
+  even for Google's speech engine, so matching is generous, a miss replays the correct
+  sound for another try, and after three real attempts she is encouraged and moved on.
+  If the phone has no mic permission or no internet, voice rounds pass automatically so
+  she is never stuck. Nothing she says is ever stored
 - **✍️ Finger tracing**: every letter can be traced with a finger over a large guide —
   writing movement builds memory that looking alone cannot
 - **🗣️ Echo practice**: word and sentence playback ends with *"अब तुम बोलो"* (now you
@@ -64,6 +75,11 @@ The site is plain HTML/CSS/JS in this `docs/` folder — no build, no server.
    - This also makes the voice work **without internet**
 2. Open the site in **Chrome** → menu ⋮ → **"Add to Home screen"** → now she has an app icon 📖 named **अक्षर ज्ञान** — one tap, full screen, no browser buttons
 3. Raise the media volume 🔊
+4. **For the 🎤 voice test**: run one group test together the first time — when the mic
+   round appears and you tap 🎤, Chrome asks for microphone permission once. Choose
+   **"Allow" (while using the app)** so she never sees that prompt again. Voice
+   recognition needs internet; without it (or without permission) the app quietly skips
+   voice checking so she can keep learning
 
 ## 👩‍🏫 First session together (15 minutes)
 
