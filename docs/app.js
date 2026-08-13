@@ -67,10 +67,10 @@ const Speech = {
     return vs.find((v) => norm(v.lang).indexOf(base) === 0) || null;
   },
 
-  /* normal speech rate; 🐢 makes everything slower */
-  rate() { return this.slow ? 0.58 : 0.78; },
-  /* extra-slow rate used for single letters and word parts */
-  letterRate() { return this.slow ? 0.5 : 0.68; },
+  /* slow, deliberate speech; 🐢 makes it slower still */
+  rate() { return this.slow ? 0.5 : 0.68; },
+  /* very slow rate for single letters and word parts — stretched, full sounds */
+  letterRate() { return this.slow ? 0.38 : 0.52; },
 
   stop() {
     this.seqToken++;
@@ -85,7 +85,8 @@ const Speech = {
     const u = new SpeechSynthesisUtterance(text);
     u.lang = lang || 'hi-IN';
     u.rate = opts.rate || this.rate();
-    u.pitch = 1.05;
+    u.pitch = 1;        /* natural, fuller voice */
+    u.volume = 1;       /* as loud as the device allows */
     const v = this.voiceFor(u.lang);
     if (v) { u.voice = v; u.lang = v.lang; }
     let done = false;
@@ -202,12 +203,19 @@ const Recog = {
   active: null,
   supported() { return !!this.Ctor && !this.broken; },
   stop() {
-    if (this.active) { try { this.active.abort(); } catch (e) { /* ignore */ } this.active = null; }
+    if (this.active) {
+      this.active._byUs = true; /* distinguish our abort from engine failures */
+      try { this.active.abort(); } catch (e) { /* ignore */ }
+      this.active = null;
+    }
   },
-  /* listen once; cb(alternatives[] | null on silence, errType | null) */
-  listen(lang, cb) {
+  /* listen once; cb(alternatives[] | null on silence, errType | null).
+     onHearing fires as soon as ANY sound is being recognised, so the UI can
+     show her that the phone is catching her voice. Patient: ~9s window. */
+  listen(lang, cb, onHearing) {
     if (!this.supported()) { cb(null, 'unsupported'); return; }
     let finished = false;
+    const collected = [];
     const done = (alts, err) => {
       if (finished) return;
       finished = true;
@@ -217,28 +225,56 @@ const Recog = {
     let rec;
     try { rec = new this.Ctor(); } catch (e) { this.broken = true; done(null, 'unsupported'); return; }
     rec.lang = lang;
-    rec.interimResults = false;
+    rec.interimResults = true;
     rec.maxAlternatives = 5;
     rec.continuous = false;
+    rec.onaudiostart = () => { if (onHearing) onHearing('mic'); };
+    rec.onspeechstart = () => { if (onHearing) onHearing('voice'); };
     rec.onresult = (ev) => {
-      const alts = [];
       try {
-        const res = ev.results[0];
-        for (let i = 0; i < res.length; i++) alts.push(res[i].transcript);
+        for (let r = 0; r < ev.results.length; r++) {
+          const res = ev.results[r];
+          if (res.isFinal) {
+            for (let i = 0; i < res.length; i++) collected.push(res[i].transcript);
+          } else if (res[0] && res[0].transcript && res[0].transcript.trim()) {
+            if (onHearing) onHearing('voice');
+          }
+        }
       } catch (e) { /* ignore */ }
-      done(alts.length ? alts : null, null);
+      if (collected.length) done(collected.slice(), null);
     };
     rec.onerror = (ev) => {
-      const t = ev && ev.error;
+      let t = (ev && ev.error) || 'error';
       if (t === 'not-allowed' || t === 'service-not-allowed' || t === 'audio-capture') this.broken = true;
-      done(null, t || 'error');
+      if (t === 'aborted' && !rec._byUs) t = 'error'; /* engine gave up on its own */
+      done(null, t);
     };
-    rec.onend = () => done(null, null); /* ended with no result = silence */
+    rec.onend = () => done(collected.length ? collected.slice() : null, null);
     this.active = rec;
     try { rec.start(); } catch (e) { done(null, 'error'); return; }
-    setTimeout(() => { if (!finished) { try { rec.stop(); } catch (e) { /* ignore */ } } }, 6000);
+    setTimeout(() => { if (!finished) { try { rec.stop(); } catch (e) { /* ignore */ } } }, 9000);
   },
 };
+
+/* short attention "ding" so she knows exactly when to speak */
+let audioCtx = null;
+function ding(then) {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = 'sine';
+    o.frequency.value = 988;
+    g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.5, audioCtx.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.28);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start();
+    o.stop(audioCtx.currentTime + 0.3);
+  } catch (e) { /* no audio context — fine */ }
+  if (then) setTimeout(then, 300);
+}
 function shuffle(arr) {
   const a = arr.slice();
   for (let i = a.length - 1; i > 0; i--) {
@@ -518,6 +554,19 @@ function renderLetterDetail() {
         '<span class="wc-emoji">🗣️</span><span class="wc-word wc-small">' + esc(it.hint || '') + '</span>' +
       '</button>';
 
+  /* real-life example words for this letter — tap to hear */
+  const exRow = (it.ex && it.ex.length)
+    ? '<div class="ex-row">' + it.ex.map((e, i) => {
+        const starts = lang === 'en'
+          ? e.word.charAt(0).toUpperCase() === it.ch
+          : baseCluster(e.word) === (baseCluster(it.ch) || it.ch);
+        return '<button class="ex-card" style="animation-delay:' + (0.25 + i * 0.15) + 's" data-a="ex" data-i="' + i + '">' +
+          '<span class="ex-emoji">' + e.emoji + '</span>' +
+          '<span class="ex-word">' + wordHTML(e.word, lang, starts ? 0 : -1, false) + '</span>' +
+        '</button>';
+      }).join('') + '</div>'
+    : '';
+
   $app.innerHTML =
     topbar((S.li + 1) + '/' + group.length, isVowelish ? '🔴' : '🔵') +
     '<div class="screen detail">' +
@@ -525,6 +574,7 @@ function renderLetterDetail() {
         (set === 'smalls' ? '<span class="ref-cap">' + esc(it.ch) + '</span>' : '') +
       '</button>' +
       wordCard +
+      exRow +
       '<nav class="navrow">' +
         '<button class="nav-btn" data-a="prev" aria-label="पिछला">⬅️</button>' +
         '<button class="nav-btn play" data-a="repeat" aria-label="सुनो">🔊</button>' +
@@ -839,51 +889,79 @@ function quizAnswer(i) {
   }
 }
 
-/* 🎤 tapped on a voice round */
+/* 🎤 tapped on a voice round: ding → listen (mic glows when it hears her) */
 function micTap() {
   if (!Q || Q.locked || Q.listening) return;
   const r = Q.rounds[Q.i];
   if (!r || r.type !== 'voice') return;
   const it = letterSet(Q.lang, Q.set)[r.abs];
   const speakLang = Q.lang === 'hi' ? 'hi-IN' : 'en-IN';
-  const micEl = document.querySelector('.mic-btn');
 
   Speech.stop();               /* never let TTS leak into the microphone */
   Q.listening = true;
+  const micEl = document.querySelector('.mic-btn');
   if (micEl) micEl.classList.add('listening');
 
-  Recog.listen(speakLang, (alts, err) => {
-    if (!Q || S.screen !== 'gquiz' || Q.rounds[Q.i] !== r) return;
-    Q.listening = false;
-    const el = document.querySelector('.mic-btn');
-    if (el) el.classList.remove('listening');
+  ding(() => {
+    if (!Q || S.screen !== 'gquiz' || Q.rounds[Q.i] !== r || !Q.listening) return;
+    Recog.listen(speakLang, (alts, err) => {
+      if (!Q || S.screen !== 'gquiz' || Q.rounds[Q.i] !== r) return;
+      Q.listening = false;
+      const el = document.querySelector('.mic-btn');
+      if (el) el.classList.remove('listening', 'hearing');
 
-    /* mic/permission/network is broken → don't trap her: pass gracefully */
-    if (err && (err === 'unsupported' || Recog.broken || err === 'network')) {
-      quizCorrect(el, VOICE_TEXT.micFail, 'hi-IN');
-      return;
-    }
+      if (err === 'aborted') return; /* we cancelled it ourselves */
 
-    if (alts && speechMatches(it.ch, alts, Q.lang)) {
-      quizCorrect(el, praise() + ' ' + it.ch, speakLang);
-      return;
-    }
+      /* mic/permission/network is broken → don't trap her: pass gracefully */
+      if (err && (err === 'unsupported' || Recog.broken || err === 'network')) {
+        quizCorrect(el, VOICE_TEXT.micFail, 'hi-IN');
+        return;
+      }
 
-    r.tries = (r.tries || 0) + 1;
-    if (r.tries >= 3) {
-      /* three honest attempts: replay the sound once more and move on */
-      quizCorrect(el, VOICE_TEXT.voiceGrace + ' ' + it.ch, speakLang);
-      return;
-    }
-    if (el) {
-      el.classList.add('wrong');
-      setTimeout(() => el.classList.remove('wrong'), 700);
-    }
-    Speech.seq([
-      { text: VOICE_TEXT.voiceRetry, lang: 'hi-IN', gap: 250 },
-      { text: it.ch, lang: speakLang, opts: { rate: Speech.letterRate() }, gap: 250 },
-      { text: VOICE_TEXT.voiceAgain, lang: 'hi-IN' },
-    ]);
+      /* engine hiccup (spontaneous abort, busy service…): one more chance,
+         then treat the mic as unusable rather than trapping her */
+      if (err && err !== 'no-speech') {
+        r.errs = (r.errs || 0) + 1;
+        if (r.errs >= 2) { quizCorrect(el, VOICE_TEXT.micFail, 'hi-IN'); return; }
+        Speech.say(VOICE_TEXT.voiceAgain);
+        return;
+      }
+
+      if (alts && speechMatches(it.ch, alts, Q.lang)) {
+        quizCorrect(el, praise() + ' ' + it.ch, speakLang);
+        return;
+      }
+
+      /* pure silence (she hesitated / spoke too late) never counts against
+         her — just invite her to press and speak again */
+      if (!alts) {
+        r.silences = (r.silences || 0) + 1;
+        if (r.silences <= 2) {
+          Speech.say(VOICE_TEXT.voiceListening + ' ' + VOICE_TEXT.voiceAgain);
+          return;
+        }
+      }
+
+      r.tries = (r.tries || 0) + 1;
+      if (r.tries >= 3) {
+        /* three honest attempts: replay the sound once more and move on */
+        quizCorrect(el, VOICE_TEXT.voiceGrace + ' ' + it.ch, speakLang);
+        return;
+      }
+      if (el) {
+        el.classList.add('wrong');
+        setTimeout(() => el.classList.remove('wrong'), 700);
+      }
+      Speech.seq([
+        { text: VOICE_TEXT.voiceRetry, lang: 'hi-IN', gap: 250 },
+        { text: it.ch, lang: speakLang, opts: { rate: Speech.letterRate() }, gap: 250 },
+        { text: VOICE_TEXT.voiceAgain, lang: 'hi-IN' },
+      ]);
+    }, () => {
+      /* the recogniser is picking up her voice — show it */
+      const el = document.querySelector('.mic-btn');
+      if (el && Q && Q.listening) el.classList.add('hearing');
+    });
   });
 }
 
@@ -1279,6 +1357,21 @@ $app.addEventListener('click', (ev) => {
       const it = letterSet(S.lang, S.set)[groups[S.gi][S.li]];
       if (it.word) Speech.say(it.word, S.lang === 'hi' ? 'hi-IN' : 'en-IN');
       else if (it.hint) Speech.say(it.hint, 'hi-IN');
+      break;
+    }
+
+    case 'ex': {
+      const groups = letterGroups(S.lang, S.set);
+      const it = letterSet(S.lang, S.set)[groups[S.gi][S.li]];
+      const e = (it.ex || [])[i];
+      if (!e) break;
+      btn.classList.remove('pop'); void btn.offsetWidth; btn.classList.add('pop');
+      const sl = S.lang === 'hi' ? 'hi-IN' : 'en-IN';
+      const starts = S.lang === 'en'
+        ? e.word.charAt(0).toUpperCase() === it.ch
+        : baseCluster(e.word) === (baseCluster(it.ch) || it.ch);
+      const phrase = S.lang === 'hi' ? (it.ch + ' से ' + e.word) : (it.ch + ' for ' + e.word);
+      Speech.say(starts ? phrase : e.word, sl);
       break;
     }
 

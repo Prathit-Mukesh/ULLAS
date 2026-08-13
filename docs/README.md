@@ -12,8 +12,9 @@ A free, offline-capable website that teaches a completely illiterate adult to re
 
 ### हिंदी path (7 steps)
 1. **स्वर** — 13 vowels, taught **3–5 letters at a time**: each letter is spoken twice
-   slowly, shown with a picture word (अ से अनानास 🍍, ऊ से ऊँट 🐪…), can be
-   **finger-traced ✍️**, and each small group ends with an instant picture-quiz
+   very slowly, shown with a picture word (अ से अनानास 🍍, ऊ से ऊँट 🐪…) **plus two
+   real-life example words** (अ → अखबार 📰, अस्पताल 🏥) with the letter highlighted in
+   each, can be **finger-traced ✍️**, and each small group ends with a test
 2. **व्यंजन** — all 36 consonants the same way, grouped in the traditional वर्ग rows
    (क ख ग घ ङ · च छ ज झ ञ …)
 3. **मात्रा** — interactive बारहखड़ी chart: pick any consonant, tap का कि की कु…, see the formula `क + ◌ा = का` in colour

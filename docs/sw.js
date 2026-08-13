@@ -4,7 +4,7 @@
    once a Hindi voice is installed on the device.) */
 'use strict';
 
-const CACHE = 'akshar-gyan-v4';
+const CACHE = 'akshar-gyan-v5';
 const ASSETS = [
   './',
   './index.html',
